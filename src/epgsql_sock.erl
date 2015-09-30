@@ -16,8 +16,8 @@
 %% state callbacks
 -export([auth/2, initializing/2, on_message/2]).
 
--include("epgsql.hrl").
--include("epgsql_binary.hrl").
+-include_lib("epgsql/include/epgsql.hrl").
+-include_lib("epgsql/include/epgsql_binary.hrl").
 
 %% Commands defined as per this page:
 %% http://www.postgresql.org/docs/9.2/static/protocol-message-formats.html
@@ -213,13 +213,23 @@ command({squery, Sql}, State) ->
 %% TODO add fast_equery command that doesn't need parsed statement,
 %% uses default (text) column format,
 %% sends Describe after Bind to get RowDescription
-command({equery, Statement, Parameters}, #state{codec = Codec} = State) ->
+command({equery, #statement{name=""}=Statement, Parameters}, #state{codec = Codec} = State) ->
     #statement{name = StatementName, columns = Columns} = Statement,
     Bin1 = epgsql_wire:encode_parameters(Parameters, Codec),
     Bin2 = epgsql_wire:encode_formats(Columns),
     send(State, ?BIND, ["", 0, StatementName, 0, Bin1, Bin2]),
     send(State, ?EXECUTE, ["", 0, <<0:?int32>>]),
     send(State, ?CLOSE, [?PREPARED_STATEMENT, StatementName, 0]),
+    send(State, ?SYNC, []),
+    {noreply, State};
+
+command({equery, Statement, Parameters}, #state{codec = Codec} = State) ->
+    #statement{name = StatementName, columns = Columns} = Statement,
+    Bin1 = epgsql_wire:encode_parameters(Parameters, Codec),
+    Bin2 = epgsql_wire:encode_formats(Columns),
+    send(State, ?BIND, ["", 0, StatementName, 0, Bin1, Bin2]),
+    send(State, ?EXECUTE, ["", 0, <<0:?int32>>]),
+    %% send(State, ?CLOSE, [?PREPARED_STATEMENT, StatementName, 0]),
     send(State, ?SYNC, []),
     {noreply, State};
 

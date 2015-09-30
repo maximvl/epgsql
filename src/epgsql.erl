@@ -25,7 +25,7 @@
               sql_query/0, bind_param/0,
               squery_row/0, equery_row/0, reply/1]).
 
--include("epgsql.hrl").
+-include_lib("epgsql/include/epgsql.hrl").
 
 -type sql_query() :: string() | iodata().
 -type host() :: inet:ip_address() | inet:hostname().
@@ -62,12 +62,14 @@
 -type error_reply() :: {error, query_error()}.
 -type reply(RowType) :: ok_reply(RowType) | error_reply().
 
+-define(CACHE, epgsql_cache).
+
 %% -- client interface --
 connect(Settings) ->
-	Host = proplists:get_value(host, Settings, "localhost"),
-	Username = proplists:get_value(username, Settings, os:getenv("USER")),
-	Password = proplists:get_value(password, Settings, ""),
-	connect(Host, Username, Password, Settings).
+        Host = proplists:get_value(host, Settings, "localhost"),
+        Username = proplists:get_value(username, Settings, os:getenv("USER")),
+        Password = proplists:get_value(password, Settings, ""),
+        connect(Host, Username, Password, Settings).
 
 connect(Host, Opts) ->
     connect(Host, os:getenv("USER"), "", Opts).
@@ -139,7 +141,15 @@ equery(C, Sql, Parameters) ->
 
 -spec equery(connection(), string(), sql_query(), [bind_param()]) -> reply(equery_row()).
 equery(C, Name, Sql, Parameters) ->
-    case parse(C, Name, Sql, []) of
+    St = case ets:lookup(?CACHE, Name) of
+            [{Name, Val}] -> {ok, Val};
+            _ ->
+                 case parse(C, Name, Sql, []) of
+                     {ok, Res} -> ets:insert(?CACHE, {Name, Res}), {ok, Res};
+                     Other -> Other
+                 end
+        end,
+    case St of
         {ok, #statement{types = Types} = S} ->
             Typed_Parameters = lists:zip(Types, Parameters),
             gen_server:call(C, {equery, S, Typed_Parameters}, infinity);
@@ -241,4 +251,3 @@ sync_on_error(C, Error = {error, _}) ->
 
 sync_on_error(_C, R) ->
     R.
-
