@@ -141,11 +141,11 @@ equery(C, Sql, Parameters) ->
 
 -spec equery(connection(), string(), sql_query(), [bind_param()]) -> reply(equery_row()).
 equery(C, Name, Sql, Parameters) ->
-    St = case ets:lookup(?CACHE, Name) of
-            [{Name, Val}] -> {ok, Val};
+    St = case ets:lookup(?CACHE, {Name, C}) of
+            [{_, Val}] -> {ok, Val};
             _ ->
                  case parse(C, Name, Sql, []) of
-                     {ok, Res} -> ets:insert(?CACHE, {Name, Res}), {ok, Res};
+                     {ok, Res} -> ets:insert(?CACHE, {{Name, C}, Res}), {ok, Res};
                      Other -> Other
                  end
         end,
